@@ -6,8 +6,8 @@ EXAMPLE=/media/data/abhinav/ann_project_data
 DATA=/media/data/abhinav/ann_project_data
 TOOLS=build/tools
 
-TRAIN_DATA_ROOT=/media/data/abhinav/ann_project_data/ImageNet_edges_cropped/train_cropped/
-VAL_DATA_ROOT=/media/data/abhinav/ann_project_data/ImageNet_edges_cropped/val_cropped/
+TRAIN_DATA_ROOT=/media/data/Datasets/ImageNet-2012/train_cropped/
+VAL_DATA_ROOT=/media/data/Datasets/ImageNet-2012/val_cropped/
 
 # Set RESIZE=true to resize the images to 256x256. Leave as false if images have
 # already been resized using another tool.
@@ -42,7 +42,7 @@ GLOG_logtostderr=2 $TOOLS/convert_imageset \
     --shuffle \
     $TRAIN_DATA_ROOT \
     $DATA/train.txt \
-    $EXAMPLE/ilsvrc12_train_edge_resized_lmdb
+    $EXAMPLE/ilsvrc12_train_resized_lmdb
 
 echo "Creating val lmdb..."
 
@@ -52,6 +52,6 @@ GLOG_logtostderr=1 $TOOLS/convert_imageset \
     --shuffle \
     $VAL_DATA_ROOT \
     $DATA/val.txt \
-    $EXAMPLE/ilsvrc12_val_edge_resized_lmdb
+    $EXAMPLE/ilsvrc12_val_resized_lmdb
 
 echo "Done."

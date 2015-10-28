@@ -371,6 +371,7 @@ def oversample(images, crop_dims):
     crops = np.empty((10 * len(images), crop_dims[0], crop_dims[1],
                       im_shape[-1]), dtype=np.float32)
     ix = 0
+
     for im in images:
         for crop in crops_ix:
             crops[ix] = im[crop[0]:crop[2], crop[1]:crop[3], :]

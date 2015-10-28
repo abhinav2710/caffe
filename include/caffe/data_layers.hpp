@@ -60,6 +60,12 @@ class Batch {
 };
 
 template <typename Dtype>
+class TwinBatch {
+public:
+    Blob<Dtype> data_, data_2_, label_;
+};
+
+template <typename Dtype>
 class BasePrefetchingDataLayer :
     public BaseDataLayer<Dtype>, public InternalThread {
  public:
@@ -87,6 +93,36 @@ class BasePrefetchingDataLayer :
   BlockingQueue<Batch<Dtype>*> prefetch_full_;
 
   Blob<Dtype> transformed_data_;
+};
+
+template <typename Dtype>
+class BasePrefetchingTwinDataLayer :
+    public BaseDataLayer<Dtype>, public InternalThread {
+ public:
+  explicit BasePrefetchingTwinDataLayer(const LayerParameter& param);
+  // LayerSetUp: implements common data layer setup functionality, and calls
+  // DataLayerSetUp to do special data layer setup for individual layer types.
+  // This method may not be overridden.
+  void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+
+  virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+  virtual void Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top);
+
+  // Prefetches batches (asynchronously if to GPU memory)
+  static const int PREFETCH_COUNT = 3;
+
+ protected:
+  virtual void InternalThreadEntry();
+  virtual void load_batch(TwinBatch<Dtype>* batch) = 0;
+
+  TwinBatch<Dtype> prefetch_[PREFETCH_COUNT];
+  BlockingQueue<TwinBatch<Dtype>*> prefetch_free_;
+  BlockingQueue<TwinBatch<Dtype>*> prefetch_full_;
+
+  Blob<Dtype> transformed_data_, transformed_data_2_;
 };
 
 template <typename Dtype>
@@ -338,6 +374,34 @@ class WindowDataLayer : public BasePrefetchingDataLayer<Dtype> {
   vector<std::pair<std::string, Datum > > image_database_cache_;
 };
 
+
+
+/**
+ * @brief Provides data to the Net from image files.
+ *
+ * TODO(dox): thorough documentation for Forward and proto params.
+ */
+template <typename Dtype>
+class TwinImageDataLayer : public BasePrefetchingTwinDataLayer<Dtype> {
+public:
+    explicit TwinImageDataLayer(const LayerParameter& param)
+        : BasePrefetchingTwinDataLayer<Dtype>(param) {}
+    virtual ~TwinImageDataLayer();
+    virtual void DataLayerSetUp(const vector<Blob<Dtype>*>& bottom,
+                                const vector<Blob<Dtype>*>& top);
+
+    virtual inline const char* type() const { return "TwinImageData"; }
+    virtual inline int ExactNumBottomBlobs() const { return 0; }
+    virtual inline int ExactNumTopBlobs() const { return 3; }
+
+protected:
+    shared_ptr<Caffe::RNG> prefetch_rng_;
+    virtual void ShuffleImages();
+    virtual void load_batch(TwinBatch<Dtype>* batch);
+
+    vector<std::pair<std::pair<std::string, std::string>, int> > lines_;
+    int lines_id_;
+};
 }  // namespace caffe
 
 #endif  // CAFFE_DATA_LAYERS_HPP_
