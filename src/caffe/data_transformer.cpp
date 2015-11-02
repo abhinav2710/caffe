@@ -127,6 +127,7 @@ void DataTransformer<Dtype>::Transform(const Datum& datum,
 }
 
 
+
 template<typename Dtype>
 void DataTransformer<Dtype>::Transform(const Datum& datum,
                                        Blob<Dtype>* transformed_blob) {

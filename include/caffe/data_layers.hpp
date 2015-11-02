@@ -388,8 +388,8 @@ class WindowDataLayer : public BasePrefetchingDataLayer<Dtype> {
 template <typename Dtype>
 class TwinImageDataLayer : public BasePrefetchingTwinDataLayer<Dtype> {
 public:
-    explicit TwinImageDataLayer(const LayerParameter& param)
-        : BasePrefetchingTwinDataLayer<Dtype>(param) {}
+    explicit TwinImageDataLayer(const LayerParameter& param);
+    //        : BasePrefetchingTwinDataLayer<Dtype>(param);
     virtual ~TwinImageDataLayer();
     virtual void DataLayerSetUp(const vector<Blob<Dtype>*>& bottom,
                                 const vector<Blob<Dtype>*>& top);
@@ -399,12 +399,23 @@ public:
     virtual inline int ExactNumTopBlobs() const { return 3; }
 
 protected:
+    shared_ptr<Caffe::RNG> rng_;
     shared_ptr<Caffe::RNG> prefetch_rng_;
     virtual void ShuffleImages();
     virtual void load_batch(TwinBatch<Dtype>* batch);
+    int Rand(int n);
+    void Transform(const cv::Mat& cv_img, Blob<Dtype>* transformed_blob,
+                   const cv::Mat& cv_img2, Blob<Dtype>* transformed_blob2);
 
     vector<std::pair<std::pair<std::string, std::string>, int> > lines_;
     int lines_id_;
+
+    // Variables to handle transformations
+    Blob<Dtype> data_mean_;
+    Blob<Dtype> data_mean_2_;
+
+
+    void InitRand();
 };
 }  // namespace caffe
 

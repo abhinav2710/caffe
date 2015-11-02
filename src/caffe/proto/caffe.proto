@@ -737,6 +737,9 @@ message TwinImageDataParameter {
   // data.
   optional bool mirror = 6 [default = false];
   optional string root_folder = 12 [default = ""];
+  // Adding mean file
+  optional string mean_file_2 = 16;
+  optional bool is_train = 17;
 }
 
 
