@@ -41,7 +41,7 @@ namespace caffe {
             }
             BlobProto blob_proto;
             ReadProtoFromBinaryFileOrDie(mean_file.c_str(), &blob_proto);
-            data_mean_.FromProto(blob_proto);
+            data_mean_2_.FromProto(blob_proto);
         }
     }
 
@@ -152,6 +152,9 @@ namespace caffe {
         CPUTimer timer;
         CHECK(batch->data_.count());
         CHECK(this->transformed_data_.count());
+
+        CHECK(batch->data_2_.count());
+        CHECK(this->transformed_data_2_.count());
         TwinImageDataParameter twin_image_data_param = this->layer_param_.twin_image_data_param();
         const int batch_size = twin_image_data_param.batch_size();
         const int new_height = twin_image_data_param.new_height();
@@ -201,11 +204,13 @@ namespace caffe {
             timer.Start();
             // Apply transformations (mirror, crop...) to the image
             int offset = batch->data_.offset(item_id);
+            int offset2 = batch->data_2_.offset(item_id);
             this->transformed_data_.set_cpu_data(prefetch_data + offset);
-            this->transformed_data_2_.set_cpu_data(prefetch_data2 + offset);
+            this->transformed_data_2_.set_cpu_data(prefetch_data2 + offset2);
             this->Transform(cv_img, &(this->transformed_data_),
                             cv_img2, &(this->transformed_data_2_));
-            //this->Transform(cv_img2, &(this->transformed_data_2_));
+            //this->data_transformer_->Transform(cv_img, &(this->transformed_data_));
+            //this->data_transformer_->Transform(cv_img2, &(this->transformed_data_2_));
 
 
             trans_time += timer.MicroSeconds();
@@ -237,8 +242,12 @@ namespace caffe {
                                               Blob<Dtype>* transformed_blob2) {
 
         const int img_channels = cv_img.channels();
+        const int img2_channels = cv_img2.channels();
         const int img_height = cv_img.rows;
         const int img_width = cv_img.cols;
+
+        const int img2_height = cv_img2.rows;
+        const int img2_width = cv_img2.cols;
 
         // Check dimensions.
         const int channels = transformed_blob->channels();
@@ -253,10 +262,6 @@ namespace caffe {
 
         CHECK(cv_img.depth() == CV_8U) << "Image data type must be unsigned byte";
 
-        const int img2_channels = cv_img2.channels();
-        const int img2_height = cv_img2.rows;
-        const int img2_width = cv_img2.cols;
-
         // Check dimensions.
         const int channels2 = transformed_blob2->channels();
         const int height2 = transformed_blob2->height();
@@ -268,12 +273,17 @@ namespace caffe {
         CHECK_LE(width2, img2_width);
         CHECK_GE(num2, 1);
 
-        CHECK(cv_img.depth() == CV_8U) << "Image data type must be unsigned byte";
+        CHECK(cv_img2.depth() == CV_8U) << "Image data type must be unsigned byte";
+
+        const Dtype scale = this->layer_param_.transform_param().scale();
+        const bool do_mirror = this->layer_param_.transform_param().mirror() && Rand(2);
+
 
         // Crop parameters
         const int crop_size = this->layer_param_.transform_param().crop_size();
-        const Dtype scale = this->layer_param_.transform_param().scale();
-        const bool do_mirror = this->layer_param_.transform_param().mirror() && Rand(2);
+
+        const bool has_mean_file = this->layer_param_.twin_image_data_param().has_mean_file();
+        const bool has_mean_file_2 = this->layer_param_.twin_image_data_param().has_mean_file_2();
 
         CHECK_GT(img_channels, 0);
         CHECK_GE(img_height, crop_size);
@@ -283,13 +293,7 @@ namespace caffe {
         CHECK_GE(img2_height, crop_size);
         CHECK_GE(img2_width, crop_size);
 
-        const bool has_mean_file = this->layer_param_.twin_image_data_param().has_mean_file();
-        const bool has_mean_file_2 = this->layer_param_.twin_image_data_param().has_mean_file_2();
-
-
-
         Dtype* mean = NULL;
-        Dtype* mean2 = NULL;
         if (has_mean_file) {
             CHECK_EQ(img_channels, data_mean_.channels());
             CHECK_EQ(img_height, data_mean_.height());
@@ -297,6 +301,7 @@ namespace caffe {
             mean = data_mean_.mutable_cpu_data();
         }
 
+        Dtype* mean2 = NULL;
         if (has_mean_file_2) {
             CHECK_EQ(img2_channels, data_mean_2_.channels());
             CHECK_EQ(img2_height, data_mean_2_.height());
@@ -306,8 +311,10 @@ namespace caffe {
 
         int h_off = 0;
         int w_off = 0;
+
         cv::Mat cv_cropped_img = cv_img;
         cv::Mat cv_cropped_img2 = cv_img2;
+
         if (crop_size) {
             CHECK_EQ(crop_size, height);
             CHECK_EQ(crop_size, width);
@@ -330,17 +337,15 @@ namespace caffe {
         CHECK(cv_cropped_img.data);
         CHECK(cv_cropped_img2.data);
 
-
         Dtype* transformed_data = transformed_blob->mutable_cpu_data();
         Dtype* transformed_data2 = transformed_blob2->mutable_cpu_data();
-
         int top_index;
 
         for (int h = 0; h < height; ++h) {
             const uchar* ptr = cv_cropped_img.ptr<uchar>(h);
             const uchar* ptr2 = cv_cropped_img2.ptr<uchar>(h);
             int img_index = 0;
-            int img2_index = 0;
+            int img_index2 = 0;
             for (int w = 0; w < width; ++w) {
                 for (int c = 0; c < img_channels; ++c) {
                     if (do_mirror) {
@@ -351,19 +356,23 @@ namespace caffe {
                     // int top_index = (c * height + h) * width + w;
                     Dtype pixel = static_cast<Dtype>(ptr[img_index++]);
                     Dtype pixel2;
-                    if (c < img2_channels)
-                        pixel2 = static_cast<Dtype>(ptr2[img2_index++]);
-
+                    if (c < img2_channels) {
+                        pixel2 = static_cast<Dtype>(ptr2[img_index2++]);
+                    }
                     if (has_mean_file) {
-                        int mean_index = (c * img_height + h_off + h) *
-                            img_width + w_off + w;
+                        int mean_index = (c * img_height + h_off + h) * img_width + w_off + w;
                         transformed_data[top_index] =
                             (pixel - mean[mean_index]) * scale;
-                        if (c < img2_channels) {
-                            transformed_data2[top_index] =
-                                (pixel2 - mean2[mean_index]) * scale;
-                        }
-                    } // Removed mean values and other else condition
+                    } else {
+                        transformed_data[top_index] = pixel * scale;
+                    }
+                    if (has_mean_file_2 && c < img2_channels) {
+                        int mean_index = (c * img_height + h_off + h) * img_width + w_off + w;
+                        transformed_data2[top_index] =
+                            (pixel2 - mean2[mean_index]) * scale;
+                    } else if (c < img2_channels) {
+                        transformed_data2[top_index] = pixel2 * scale;
+                    }
                 }
             }
         }
